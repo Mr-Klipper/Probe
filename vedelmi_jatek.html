@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Házvédő Lövöldözős Játék</title>
+    <style>
+        canvas {
+            background: darkgreen;
+            display: block;
+            margin: auto;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        // Hangok betöltése
+        const shootSound = new Audio("shoot.mp3");
+        const explosionSound = new Audio("explosion.mp3");
+        const placeWallSound = new Audio("place_wall.mp3");
+
+        // Képek betöltése
+        const playerImg = new Image();
+        playerImg.src = "player.png";
+
+        const enemyImg = new Image();
+        enemyImg.src = "robot.png";
+
+        const bulletImg = new Image();
+        bulletImg.src = "bullet.png";
+
+        const houseImg = new Image();
+        houseImg.src = "house.png";
+
+        const wallImg = new Image();
+        wallImg.src = "wall.png"; // Fal kép
+
+        // Játékos objektum
+        const player = {
+            x: canvas.width / 2,
+            y: canvas.height / 2 + 100,
+            width: 40,
+            height: 40,
+            speed: 4,
+        };
+
+        // Lövedékek, ellenségek és falak
+        const bullets = [];
+        const enemies = [];
+        const walls = [];
+        let parts = 0; // Alkatrészek száma
+
+        const bulletSpeed = 7;
+        const enemySpeed = 2;
+        const spawnInterval = 1500;
+        let lives = 5;
+        let gameOver = false;
+
+        // Ház
+        const house = { x: canvas.width / 2 - 50, y: canvas.height / 2 - 50, width: 100, height: 100 };
+
+        // Billentyűfigyelés
+        const keys = {};
+        window.addEventListener("keydown", (e) => keys[e.code] = true);
+        window.addEventListener("keyup", (e) => keys[e.code] = false);
+
+        function shoot() {
+            bullets.push({ x: player.x + player.width / 2 - 5, y: player.y, dy: -bulletSpeed });
+            shootSound.play();
+        }
+
+        function spawnEnemy() {
+            let x, y;
+            let side = Math.floor(Math.random() * 4);
+
+            if (side === 0) { x = 0; y = Math.random() * canvas.height; }
+            else if (side === 1) { x = canvas.width; y = Math.random() * canvas.height; }
+            else if (side === 2) { x = Math.random() * canvas.width; y = 0; }
+            else { x = Math.random() * canvas.width; y = canvas.height; }
+
+            enemies.push({ x, y, width: 40, height: 40, dx: 0, dy: 0 });
+        }
+        setInterval(spawnEnemy, spawnInterval);
+
+        function placeWall() {
+            if (parts >= 3) {
+                walls.push({ x: player.x, y: player.y, width: 50, height: 50, health: 3 });
+                parts -= 3;
+                placeWallSound.play();
+            }
+        }
+
+        function update() {
+            if (gameOver) return;
+
+            if (keys["ArrowLeft"] && player.x > 0) player.x -= player.speed;
+            if (keys["ArrowRight"] && player.x + player.width < canvas.width) player.x += player.speed;
+            if (keys["ArrowUp"] && player.y > 0) player.y -= player.speed;
+            if (keys["ArrowDown"] && player.y + player.height < canvas.height) player.y += player.speed;
+            if (keys["Space"]) shoot();
+            if (keys["KeyF"]) placeWall();
+
+            bullets.forEach((bullet, index) => {
+                bullet.y += bullet.dy;
+                if (bullet.y < 0) bullets.splice(index, 1);
+            });
+
+            enemies.forEach((enemy, index) => {
+                let angle = Math.atan2(house.y + house.height / 2 - enemy.y, house.x + house.width / 2 - enemy.x);
+                enemy.dx = Math.cos(angle) * enemySpeed;
+                enemy.dy = Math.sin(angle) * enemySpeed;
+                enemy.x += enemy.dx;
+                enemy.y += enemy.dy;
+
+                walls.forEach((wall, wIndex) => {
+                    if (enemy.x < wall.x + wall.width && enemy.x + enemy.width > wall.x &&
+                        enemy.y < wall.y + wall.height && enemy.y + enemy.height > wall.y) {
+                        wall.health--;
+                        if (wall.health <= 0) walls.splice(wIndex, 1);
+                        enemies.splice(index, 1);
+                    }
+                });
+
+                if (enemy.x < house.x + house.width && enemy.x + enemy.width > house.x &&
+                    enemy.y < house.y + house.height && enemy.y + enemy.height > house.y) {
+                    enemies.splice(index, 1);
+                    lives--;
+                    if (lives <= 0) {
+                        gameOver = true;
+                        alert("Vesztettél! Frissítsd az oldalt az újrakezdéshez.");
+                    }
+                }
+            });
+
+            bullets.forEach((bullet, bIndex) => {
+                enemies.forEach((enemy, eIndex) => {
+                    if (bullet.x < enemy.x + enemy.width && bullet.x + 10 > enemy.x &&
+                        bullet.y < enemy.y + enemy.height && bullet.y + 10 > enemy.y) {
+                        enemies.splice(eIndex, 1);
+                        bullets.splice(bIndex, 1);
+                        explosionSound.play();
+                        if (Math.random() < 0.5) parts++;
+                    }
+                });
+            });
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(houseImg, house.x, house.y, house.width, house.height);
+            ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+            walls.forEach(wall => ctx.drawImage(wallImg, wall.x, wall.y, wall.width, wall.height));
+            bullets.forEach(bullet => ctx.drawImage(bulletImg, bullet.x, bullet.y, 10, 20));
+            enemies.forEach(enemy => ctx.drawImage(enemyImg, enemy.x, enemy.y, enemy.width, enemy.height));
+
+            ctx.fillStyle = "white";
+            ctx.font = "20px Arial";
+            ctx.fillText(`Életek: ${lives} | Alkatrészek: ${parts}`, 10, 30);
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            if (!gameOver) requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>
